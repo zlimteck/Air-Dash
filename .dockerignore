@@ -20,6 +20,7 @@ coverage
 .claude
 CLAUDE.md
 AGENTS.md
+memory-bank/
 Dockerfile
 docker-compose.yml
 .dockerignore
