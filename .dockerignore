@@ -1,0 +1,33 @@
+# Never ship secrets or local state into the image
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Build artifacts and dependencies (reinstalled/rebuilt inside the image)
+node_modules
+.next
+out
+coverage
+
+# VCS / CI / tooling
+.git
+.github
+.vscode
+.claude
+CLAUDE.md
+AGENTS.md
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Generated Prisma client (regenerated during the image build)
+lib/generated/prisma
+
+# Misc
+.DS_Store
+npm-debug.log*
+README.md

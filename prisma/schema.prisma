@@ -1,0 +1,162 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id            String  @id @default(cuid())
+  email         String  @unique
+  passwordHash  String
+  emailVerified Boolean @default(false)
+  // Email change in progress: the new address awaiting verification.
+  pendingEmail  String?
+
+  // AirVPN API key, encrypted at rest (AES-256-GCM) — see lib/crypto/secretBox.ts
+  airvpnKeyCiphertext String?
+  airvpnKeyIv         String?
+  airvpnKeyAuthTag    String?
+  airvpnKeyUpdatedAt  DateTime?
+
+  preferredLocale String?
+  preferredTheme  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
+  twoFactor               TwoFactorSecret?
+  webauthnCredentials     WebAuthnCredential[]
+  sessions                Session[]
+  auditLogs               AuditLog[]
+  vpnConnectionLogs       VpnConnectionLog[]
+
+  @@index([email])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model TwoFactorSecret {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  secretCiphertext String
+  secretIv         String
+  secretAuthTag    String
+  enabled          Boolean   @default(false)
+  confirmedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  backupCodes TwoFactorBackupCode[]
+}
+
+model TwoFactorBackupCode {
+  id          String          @id @default(cuid())
+  twoFactorId String
+  twoFactor   TwoFactorSecret @relation(fields: [twoFactorId], references: [id], onDelete: Cascade)
+  codeHash    String
+  usedAt      DateTime?
+  createdAt   DateTime        @default(now())
+
+  @@index([twoFactorId])
+}
+
+model WebAuthnCredential {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialId String    @unique
+  publicKey    Bytes
+  counter      BigInt    @default(0)
+  transports   String?
+  deviceName   String?
+  aaguid       String?
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([userId])
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  lastSeenAt DateTime  @default(now())
+  ipAddress  String?
+  userAgent  String?
+  amrMethods String?
+  revokedAt  DateTime?
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  ipAddress String?
+  userAgent String?
+  metadata  String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+}
+
+// Local VPN connection history, built from userinfo snapshots taken while
+// the dashboard is open. AirVPN itself keeps no such history.
+model VpnConnectionLog {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceName     String?
+  serverName     String
+  serverCountry  String?
+  serverLocation String?
+  exitIp         String?
+  // Identity of one connection: AirVPN reports the session start time.
+  connectedSinceUnix BigInt
+  bytesRead      BigInt    @default(0)
+  bytesWrite     BigInt    @default(0)
+  firstSeenAt    DateTime  @default(now())
+  lastSeenAt     DateTime  @default(now())
+  endedAt        DateTime?
+
+  @@unique([userId, serverName, connectedSinceUnix, deviceName])
+  @@index([userId, lastSeenAt])
+}
