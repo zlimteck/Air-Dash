@@ -72,6 +72,7 @@ export async function verifyRegistration(
       expectedChallenge: challenge,
       expectedOrigin,
       expectedRPID: rpID,
+      requireUserVerification: false,
     });
   } catch (err) {
     console.error("[webauthn] verifyRegistrationResponse failed:", err);
