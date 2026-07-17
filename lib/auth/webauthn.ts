@@ -18,17 +18,20 @@ function rpConfig() {
   return { rpID: url.hostname, expectedOrigin: url.origin };
 }
 
-// In-memory challenge store (single-instance deployment).
-const challenges = new Map<string, { challenge: string; expiresAt: number }>();
-
-function storeChallenge(key: string, challenge: string): void {
-  challenges.set(key, { challenge, expiresAt: Date.now() + CHALLENGE_TTL_MS });
+async function storeChallenge(key: string, challenge: string): Promise<void> {
+  const expiresAt = new Date(Date.now() + CHALLENGE_TTL_MS);
+  await db.webAuthnChallenge.upsert({
+    where: { id: key },
+    update: { challenge, expiresAt },
+    create: { id: key, challenge, expiresAt },
+  });
 }
 
-function takeChallenge(key: string): string | null {
-  const entry = challenges.get(key);
-  challenges.delete(key);
-  if (!entry || entry.expiresAt < Date.now()) return null;
+async function takeChallenge(key: string): Promise<string | null> {
+  const entry = await db.webAuthnChallenge.findUnique({ where: { id: key } });
+  if (!entry) return null;
+  await db.webAuthnChallenge.delete({ where: { id: key } });
+  if (entry.expiresAt < new Date()) return null;
   return entry.challenge;
 }
 
@@ -48,7 +51,7 @@ export async function createRegistrationOptions(userId: string, email: string) {
     },
   });
 
-  storeChallenge(`reg:${userId}`, options.challenge);
+  await storeChallenge(`reg:${userId}`, options.challenge);
   return options;
 }
 
@@ -57,7 +60,7 @@ export async function verifyRegistration(
   response: RegistrationResponseJSON,
   deviceName: string | null,
 ): Promise<boolean> {
-  const challenge = takeChallenge(`reg:${userId}`);
+  const challenge = await takeChallenge(`reg:${userId}`);
   if (!challenge) return false;
 
   const { rpID, expectedOrigin } = rpConfig();
@@ -70,7 +73,8 @@ export async function verifyRegistration(
       expectedOrigin,
       expectedRPID: rpID,
     });
-  } catch {
+  } catch (err) {
+    console.error("[webauthn] verifyRegistrationResponse failed:", err);
     return false;
   }
 
@@ -105,7 +109,7 @@ export async function createAuthenticationOptions(userId: string) {
     })),
   });
 
-  storeChallenge(`auth:${userId}`, options.challenge);
+  await storeChallenge(`auth:${userId}`, options.challenge);
   return options;
 }
 
@@ -124,7 +128,7 @@ export async function createPasswordlessOptions() {
   });
 
   const challengeId = crypto.randomUUID();
-  storeChallenge(`pwl:${challengeId}`, options.challenge);
+  await storeChallenge(`pwl:${challengeId}`, options.challenge);
   return { options, challengeId };
 }
 
@@ -136,7 +140,7 @@ export async function verifyPasswordlessAuthentication(
   challengeId: string,
   response: AuthenticationResponseJSON,
 ): Promise<string | null> {
-  const challenge = takeChallenge(`pwl:${challengeId}`);
+  const challenge = await takeChallenge(`pwl:${challengeId}`);
   if (!challenge) return null;
 
   const credential = await db.webAuthnCredential.findUnique({
@@ -181,7 +185,7 @@ export async function verifyAuthentication(
   userId: string,
   response: AuthenticationResponseJSON,
 ): Promise<boolean> {
-  const challenge = takeChallenge(`auth:${userId}`);
+  const challenge = await takeChallenge(`auth:${userId}`);
   if (!challenge) return false;
 
   const credential = await db.webAuthnCredential.findUnique({

@@ -109,6 +109,13 @@ model WebAuthnCredential {
   @@index([userId])
 }
 
+model WebAuthnChallenge {
+  id        String   @id
+  challenge String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
 model Session {
   id         String    @id @default(cuid())
   userId     String
